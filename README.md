@@ -211,7 +211,8 @@ The [Release workflow](.github/workflows/release.yml) then runs CI and publishes
 
 - **GitHub Release** `vX.Y.Z` with `oversight_<version>_<os>_<arch>` archives for linux/darwin (amd64, arm64) and
   windows (amd64), plus `SHA256SUMS`. Each archive has the binary with the UI next to it, so `./oversight` serves the
-  API and the UI on one port. Copy `.env.example` to `.env` (or run `scripts/setup.sh`) first.
+  API and the UI on one port. Copy `.env.example` to `.env` (or run `scripts/setup.sh`) first. The binaries aren't
+  code-signed, so on macOS clear the download quarantine once: `xattr -d com.apple.quarantine ./oversight`.
 - **npm package** [`@lariat-labs/oversight-element`](https://github.com/Lariat-Labs/oversightLLM/pkgs/npm/oversight-element)
   on GitHub Packages: the `<oversight-app>` web component for embedding in other apps.
 

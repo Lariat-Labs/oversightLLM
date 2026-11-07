@@ -112,7 +112,7 @@ jobs:
           path: dist/*
 
   publish:
-    name: Publish v${{ needs.version.outputs.version }}
+    name: Publish release
     needs: [version, web, api]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
