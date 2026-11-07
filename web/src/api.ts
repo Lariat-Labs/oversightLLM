@@ -71,7 +71,7 @@ export type JudgeInfo = {
 };
 export type Alert = { conversationId: string; agent: string; status: string; summary: string; riskFlags: string[] | null; at: string };
 export type Health = {
-  ok: boolean; projectName: string; project: string; judgeDeployment: string;
+  ok: boolean; version?: string; commit?: string; projectName: string; project: string; judgeDeployment: string;
   azure: { ok: boolean; account?: { user: string; subscription: string }; error?: string };
   foundry: { ok: boolean; error?: string };
   live: { ready: boolean; spans: number; lastPoll: string; error?: string; interval: string; lookback: string };

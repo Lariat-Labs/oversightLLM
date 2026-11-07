@@ -24,7 +24,17 @@ import (
 	"github.com/Lariat-Labs/oversightLLM/api/internal/telemetry"
 )
 
+// Set at build time: go build -ldflags "-X main.version=1.2.3 -X main.commit=abc123".
+var (
+	version = "dev"
+	commit  = ""
+)
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("oversight %s %s\n", version, commit)
+		return
+	}
 	for _, p := range []string{".env", "../.env"} {
 		config.LoadDotEnv(p)
 	}
@@ -82,6 +92,7 @@ func main() {
 		Evals:     store,
 		Publisher: &evals.Publisher{Foundry: fc, GraderModel: cfg.EvalDeployment},
 		Hub:       hub, Live: live,
+		Version: version, Commit: commit,
 	}
 	srv.StartAutoJudge(ctx)
 	srv.RegisterGauges()
@@ -94,7 +105,10 @@ func main() {
 		defer cancel()
 		_ = hs.Shutdown(shutdown)
 	}()
-	slog.Info("oversight api listening", "addr", "http://"+cfg.Host+":"+cfg.Port, "project", cfg.ProjectName(),
+	if cfg.WebDir != "" {
+		slog.Info("serving web UI", "dir", cfg.WebDir)
+	}
+	slog.Info("oversight api listening", "version", version, "addr", "http://"+cfg.Host+":"+cfg.Port, "project", cfg.ProjectName(),
 		"judge", cfg.JudgeDeployment, "judgeTraced", tracer.Enabled(), "poll", cfg.PollInterval, "lookback", cfg.Lookback, "runningWindow", activity.RunningWindow)
 	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)

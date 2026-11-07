@@ -29,6 +29,8 @@ import (
 )
 
 type Server struct {
+	Version   string // release version ("dev" for local builds)
+	Commit    string
 	Cfg       *config.Config
 	Auth      *azauth.CLI
 	Foundry   *foundry.Client
@@ -197,6 +199,8 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	out := map[string]any{
+		"version":         s.Version,
+		"commit":          s.Commit,
 		"project":         s.Cfg.ProjectEndpoint,
 		"projectName":     s.Cfg.ProjectName(),
 		"workspaceId":     s.Cfg.WorkspaceID,

@@ -1,0 +1,149 @@
+name: Release
+
+# Push a tag vX.Y.Z (make release V=X.Y.Z prints the command) to publish:
+#   - GitHub Release with oversight binaries (UI bundled) for 5 platforms + SHA256SUMS
+#   - npm package @lariat-labs/oversight-element on GitHub Packages
+# Run it manually (Actions > Release > Run workflow) for a dry run that builds everything
+# and uploads the archives as workflow artifacts without publishing.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          v=$(cat VERSION)
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [ "${GITHUB_REF_NAME}" = "v$v" ] || { echo "tag ${GITHUB_REF_NAME} does not match VERSION $v"; exit 1; }
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Releasing $v (publish: $([ "${GITHUB_REF_TYPE}" = tag ] && echo yes || echo no, dry run))" >> "$GITHUB_STEP_SUMMARY"
+
+  web:
+    name: Build web component
+    needs: [ci, version]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build # no VITE_OVERSIGHT_API: the bundled UI talks to the API that serves it
+      - run: npm pack
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web
+          path: |
+            web/dist
+            web/*.tgz
+
+  api:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: [ci, version, web]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.mod
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: webart
+      - name: Build and package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          name="oversight_${VERSION}_${GOOS}_${GOARCH}"
+          ext=""; [ "$GOOS" = windows ] && ext=".exe"
+          mkdir -p "dist/$name/web"
+          (cd api && go build -trimpath -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${GITHUB_SHA::7}" -o "../dist/$name/oversight$ext" ./cmd/oversight)
+          cp -r webart/dist/. "dist/$name/web/"
+          cp .env.example LICENSE README.md "dist/$name/"
+          mkdir -p "dist/$name/scripts" && cp scripts/setup.sh "dist/$name/scripts/"
+          cd dist
+          if [ "$GOOS" = windows ]; then zip -qr "$name.zip" "$name"; else tar -czf "$name.tar.gz" "$name"; fi
+          rm -rf "$name"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+
+  publish:
+    name: Publish v${{ needs.version.outputs.version }}
+    needs: [version, web, api]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release
+      packages: write # publish to GitHub Packages
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: art
+      - name: Collect release files
+        run: |
+          mkdir release
+          cp art/bin-*/* release/
+          (cd release && sha256sum * > SHA256SUMS)
+          ls -la release
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${VERSION}" release/* \
+            --title "Oversight v${VERSION}" --generate-notes --verify-tag
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@lariat-labs"
+      - name: Publish npm package to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: npm publish art/web/*.tgz

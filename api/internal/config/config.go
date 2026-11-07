@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -110,6 +111,9 @@ func Load() (*Config, error) {
 	if err != nil || u.Host == "" || !strings.Contains(u.Path, "/api/projects/") {
 		return nil, fmt.Errorf("FOUNDRY_PROJECT_ENDPOINT must look like https://<resource>.services.ai.azure.com/api/projects/<project>")
 	}
+	if c.WebDir == "" {
+		c.WebDir = bundledWebDir()
+	}
 	if c.OpenAIEndpoint == "" {
 		c.OpenAIEndpoint = DeriveOpenAIEndpoint(c.ProjectEndpoint)
 	}
@@ -138,4 +142,18 @@ func env(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// bundledWebDir returns the "web" folder next to the executable (release archives ship
+// the UI there), or "" when it isn't present (go run, local dev).
+func bundledWebDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	dir := filepath.Join(filepath.Dir(exe), "web")
+	if st, err := os.Stat(filepath.Join(dir, "index.html")); err == nil && !st.IsDir() {
+		return dir
+	}
+	return ""
 }

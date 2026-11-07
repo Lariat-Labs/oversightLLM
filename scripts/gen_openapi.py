@@ -1,5 +1,7 @@
 """Generate api/internal/server/openapi.json (run: make openapi). Edit the paths and schemas here, not the JSON."""
-import json, sys
+import json, os, sys
+
+VERSION = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "VERSION")).read().strip()
 R = lambda name: {"$ref": f"#/components/schemas/{name}"}
 arr = lambda x: {"type": "array", "items": x}
 S = lambda **kw: {"type": "string", **kw}
@@ -128,7 +130,7 @@ paths = {
 
 spec = {
   "openapi": "3.1.0",
-  "info": {"title": "Oversight API", "version": "0.1.0",
+  "info": {"title": "Oversight API", "version": VERSION,
     "description": "Watch Microsoft Foundry agents through their Application Insights telemetry, read runs step by step, ask a judge model for intent, and publish eval cases to Foundry.\n\nAuth: none. The API is single-user, listens on 127.0.0.1, and calls Azure as whoever ran `az login`."},
   "servers": [{"url": "/", "description": "This server"}],
   "tags": [{"name": n} for n in ["Activity", "Agents", "Judge", "Evals", "System"]],

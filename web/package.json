@@ -1,8 +1,28 @@
 {
-  "name": "oversight-web",
-  "private": true,
+  "name": "@lariat-labs/oversight-element",
   "version": "0.1.0",
+  "description": "<oversight-app> web component: the Oversight UI for watching Microsoft Foundry agents (talks to the Oversight API).",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lariat-Labs/oversightLLM.git",
+    "directory": "web"
+  },
+  "homepage": "https://github.com/Lariat-Labs/oversightLLM#embedding-the-micro-frontend",
+  "module": "./dist/oversight-element.js",
+  "exports": {
+    ".": "./dist/oversight-element.js"
+  },
+  "files": [
+    "dist/oversight-element.js",
+    "README.md"
+  ],
+  "sideEffects": true,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

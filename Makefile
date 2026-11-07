@@ -2,9 +2,11 @@
 SHELL := /bin/bash
 PORT ?= $(shell grep -E '^OVERSIGHT_PORT=' .env 2>/dev/null | cut -d= -f2 || true)
 PORT := $(or $(PORT),8080)
+VERSION := $(shell cat VERSION)
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(shell git rev-parse --short HEAD 2>/dev/null)
 API_URL ?= http://127.0.0.1:$(PORT)
 
-.PHONY: help setup login check deps api web dev build serve test clean register-judge openapi
+.PHONY: help setup login check deps api web dev build serve test clean register-judge openapi release version
 
 help:  ## Show targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -40,11 +42,18 @@ dev: ## Run API + frontend together (Ctrl-C stops both)
 openapi: ## Regenerate the OpenAPI spec served at /api/docs
 	python3 scripts/gen_openapi.py api/internal/server/openapi.json
 
+release: ## Bump versions, test, commit and tag (make release V=0.2.0); push the tag to publish
+	@test -n "$(V)" || { echo "usage: make release V=0.2.0"; exit 2; }
+	@scripts/release.sh $(V)
+
+version: ## Print the current version
+	@echo $(VERSION)
+
 register-judge: ## Register the judge in Foundry as an external agent (oversight-judge)
 	cd api && OVERSIGHT_DATA_DIR=../data go run ./cmd/oversight register-judge
 
 build: ## Build the API binary and the web component bundle
-	cd api && go build -o bin/oversight ./cmd/oversight
+	cd api && go build -ldflags "$(LDFLAGS)" -o bin/oversight ./cmd/oversight
 	cd web && npm run build
 
 serve: build ## Run the built API, also serving the frontend at /

@@ -41,7 +41,7 @@ Log Analytics workspace) and a model deployment for the judge. It writes them to
 that each one answers. Run `make login` to force a new device-code sign-in, and `make check`
 to re-verify without prompts.
 
-Other targets: `make register-judge`, `make openapi`, `make build` (binary + bundle), `make serve` (built API that also serves the frontend at `/`),
+Other targets: `make release V=x.y.z`, `make version`, `make register-judge`, `make openapi`, `make build` (binary + bundle), `make serve` (built API that also serves the frontend at `/`),
 `make test` (Go tests + TypeScript typecheck).
 
 ### Environment
@@ -197,6 +197,27 @@ from `scripts/gen_openapi.py` (`make openapi`). A test fails if a route is missi
 | POST | `/api/evals/traces` | `{"agent","lookbackHours?","maxTraces?"}`: grade the agent's recent runs from traces (shows under the agent in Foundry) |
 | GET | `/api/evals/foundry?agent=` | Foundry evals and recent runs |
 
+## Releases
+
+The version lives in [`VERSION`](VERSION) and is stamped into the API binary (`oversight version`, `/api/health`,
+`oversight_build_info`), the npm package and the OpenAPI spec.
+
+```bash
+make release V=0.2.0          # bump versions, regenerate the spec, run tests, commit, tag
+git push origin main v0.2.0   # pushing the tag publishes the release
+```
+
+The [Release workflow](.github/workflows/release.yml) then runs CI and publishes:
+
+- **GitHub Release** `vX.Y.Z` with `oversight_<version>_<os>_<arch>` archives for linux/darwin (amd64, arm64) and
+  windows (amd64), plus `SHA256SUMS`. Each archive has the binary with the UI next to it, so `./oversight` serves the
+  API and the UI on one port. Copy `.env.example` to `.env` (or run `scripts/setup.sh`) first.
+- **npm package** [`@lariat-labs/oversight-element`](https://github.com/Lariat-Labs/oversightLLM/pkgs/npm/oversight-element)
+  on GitHub Packages: the `<oversight-app>` web component for embedding in other apps.
+
+Running the workflow by hand (Actions → Release → Run workflow) is a dry run: it builds everything and keeps the
+archives as workflow artifacts, but publishes nothing.
+
 ## Metrics
 
 `GET /metrics` serves Prometheus text format for **the Oversight service itself**. Fleet activity (runs,
@@ -217,6 +238,10 @@ Useful alerts: `oversight_telemetry_last_success_age_seconds > 300` (the live vi
 `rate(oversight_upstream_requests_total{outcome="error"}[5m]) > 0`.
 
 ## Embedding the micro frontend
+
+```bash
+npm install @lariat-labs/oversight-element --registry=https://npm.pkg.github.com   # then: import "@lariat-labs/oversight-element"
+```
 
 ```html
 <script type="module" src="https://<where-you-host>/oversight-element.js"></script>

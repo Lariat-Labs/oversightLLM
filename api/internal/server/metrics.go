@@ -27,7 +27,7 @@ func (s *Server) RegisterGauges() {
 		return 0
 	}
 	g("oversight_build_info", "Build information (value is always 1).", func() []metrics.Sample {
-		return []metrics.Sample{{Labels: []string{"go_version", runtime.Version(), "project", s.Cfg.ProjectName(), "judge_deployment", s.Cfg.JudgeDeployment}, Value: 1}}
+		return []metrics.Sample{{Labels: []string{"version", s.Version, "go_version", runtime.Version(), "project", s.Cfg.ProjectName(), "judge_deployment", s.Cfg.JudgeDeployment}, Value: 1}}
 	})
 	g("oversight_uptime_seconds", "Seconds since the API started.", func() []metrics.Sample { return one(time.Since(startedAt).Seconds()) })
 	g("oversight_sse_subscribers", "Connected Server-Sent Events clients.", func() []metrics.Sample { return one(float64(s.Hub.Subscribers())) })

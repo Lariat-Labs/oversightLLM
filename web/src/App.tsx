@@ -155,7 +155,7 @@ export function App({ apiBase, initialAgent, host, hashRouting }: { apiBase: str
       <header className="appbar">
         <div className="brand">
           <span className="brand-mark"><Icon name="eye" size={15} strokeWidth={2} /></span>
-          Oversight {h && <small>{h.projectName}</small>}
+          <span title={`UI v${__OVERSIGHT_VERSION__} · API ${h?.version ? (h.version === "dev" ? "dev build" : "v" + h.version) : "…"}`}>Oversight</span> {h && <small>{h.projectName}</small>}
         </div>
         <nav className="appnav" aria-label="Main">
           {NAV.map((n) => (
@@ -176,6 +176,7 @@ export function App({ apiBase, initialAgent, host, hashRouting }: { apiBase: str
             <span className={`dot ${connected ? "on" : "off"}`} /> {connected ? "Live" : "Offline"}
           </span>
           <span className="bar-sep" />
+          <span className="bar-item hide-sm" title={`UI v${__OVERSIGHT_VERSION__} · API ${h?.version || "?"}${h?.commit ? " (" + h.commit.slice(0, 7) + ")" : ""}`}>v{__OVERSIGHT_VERSION__}</span>
           <span className="bar-item" title={`${user} · ${h?.azure?.account?.subscription || ""}`}><span className="avatar-user">{user.slice(0, 2).toUpperCase() || "?"}</span></span>
         </div>
       </header>

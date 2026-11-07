@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call: # reused by release.yml
 
 permissions:
   contents: read
@@ -16,8 +17,8 @@ jobs:
       run:
         working-directory: api
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: api/go.mod
       - name: gofmt
@@ -27,7 +28,7 @@ jobs:
       - name: test
         run: go test ./...
       - name: build
-        run: go build -o bin/oversight ./cmd/oversight
+        run: go build -o bin/oversight ./cmd/oversight && ./bin/oversight version
 
   web:
     name: Frontend (React web component)
@@ -36,8 +37,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -48,12 +49,22 @@ jobs:
       - name: build
         run: npm run build
 
+  versions:
+    name: Versions agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: VERSION matches web/package.json
+        run: |
+          v=$(cat VERSION); p=$(node -p "require('./web/package.json').version")
+          [ "$v" = "$p" ] || { echo "VERSION=$v but web/package.json=$p (use make release)"; exit 1; }
+
   openapi:
     name: OpenAPI spec is up to date
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: regenerate and diff
