@@ -1,0 +1,26 @@
+# --- secrets and local config (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+local.settings.json
+
+# --- runtime data: eval cases, judge cache, settings (contain real agent inputs/outputs) ---
+data/
+
+# --- build output ---
+api/bin/
+web/dist/
+web/node_modules/
+*.test
+*.out
+coverage/
+
+# --- editor / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log

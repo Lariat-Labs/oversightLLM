@@ -1,0 +1,2073 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Oversight API",
+    "version": "0.1.0",
+    "description": "Watch Microsoft Foundry agents through their Application Insights telemetry, read runs step by step, ask a judge model for intent, and publish eval cases to Foundry.\n\nAuth: none. The API is single-user, listens on 127.0.0.1, and calls Azure as whoever ran `az login`."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "This server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Activity"
+    },
+    {
+      "name": "Agents"
+    },
+    {
+      "name": "Judge"
+    },
+    {
+      "name": "Evals"
+    },
+    {
+      "name": "System"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Health of the Azure CLI session, Foundry and the telemetry poller",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Server-Sent Events stream",
+        "description": "text/event-stream. Event types: status, overview, activity, insight, intent, alert, settings, evals, evals.uploaded, heartbeat. Each data line is JSON `{type, agent?, conversationId?, data}`.",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "description": "Filter to one agent (gen_ai.agent.id).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "conversation",
+            "in": "query",
+            "required": false,
+            "description": "Only events for this conversation id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Prometheus metrics for the Oversight service itself",
+        "description": "Text exposition format 0.0.4. Service health only (HTTP, Azure calls, poller, judge usage, auto-judge, eval uploads, trace export); fleet activity lives in App Insights and /api/overview.",
+        "responses": {
+          "200": {
+            "description": "Metrics",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "This OpenAPI document",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/docs": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Interactive API docs (Swagger UI)",
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/overview": {
+      "get": {
+        "tags": [
+          "Activity"
+        ],
+        "summary": "Fleet overview: totals, agents, tools, tasks, timeline, live feed",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "description": "Filter to one agent (gen_ai.agent.id).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "description": "Time window as a Go duration, e.g. 1h, 24h, 168h. Defaults to OVERSIGHT_LOOKBACK.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/overview/insight": {
+      "get": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "Latest judge summary of the fleet (null if none yet)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Insight"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "Ask the judge to summarise the fleet now (one model call)",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "description": "Time window as a Go duration, e.g. 1h, 24h, 168h. Defaults to OVERSIGHT_LOOKBACK.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Insight"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "tags": [
+          "Activity"
+        ],
+        "summary": "Runs in the window, newest first, with cached judge intent",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "description": "Filter to one agent (gen_ai.agent.id).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "description": "Time window as a Go duration, e.g. 1h, 24h, 168h. Defaults to OVERSIGHT_LOOKBACK.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "running | completed | failed | incomplete",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Max rows (default 200)",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}": {
+      "get": {
+        "tags": [
+          "Activity"
+        ],
+        "summary": "Run timeline for a conversation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "gen_ai.conversation.id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "$ref": "#/components/schemas/Conversation"
+                    },
+                    "intent": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/Intent"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/intent": {
+      "post": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "Judge a conversation's intent, direction and risk flags (cached)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "gen_ai.conversation.id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "description": "1 to ignore the cache",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Intent"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/intents": {
+      "get": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "All cached judge intents",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "description": "Filter to one agent (gen_ai.agent.id).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Intent"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "Foundry agents joined with telemetry (plus unregistered agents that emit spans)",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "description": "Time window as a Go duration, e.g. 1h, 24h, 168h. Defaults to OVERSIGHT_LOOKBACK.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "description": "1 to re-read agents from Foundry",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/agents/{id}": {
+      "get": {
+        "tags": [
+          "Agents"
+        ],
+        "summary": "One agent with its filtered overview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Agent name or trace id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "description": "Time window as a Go duration, e.g. 1h, 24h, 168h. Defaults to OVERSIGHT_LOOKBACK.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agent": {
+                      "$ref": "#/components/schemas/Agent"
+                    },
+                    "overview": {
+                      "$ref": "#/components/schemas/Overview"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/judge": {
+      "get": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "Judge deployment, Foundry registration, tracing and usage",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JudgeInfo"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/judge/register": {
+      "post": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "Register (or add a version of) the judge as a Foundry external agent",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Runtime switches",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Change runtime switches (e.g. turn auto-judge on)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "tags": [
+          "Judge"
+        ],
+        "summary": "Runs the auto-judge marked drifting, stuck or failed (in memory)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Alert"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals": {
+      "get": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Eval cases",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "description": "Agent name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EvalCase"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Create a case (defaults to approved)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalCaseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals/{id}": {
+      "put": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Update a case (partial; e.g. {\"status\":\"approved\"})",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Case id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalCaseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Delete a case",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Case id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals/from-conversation/{id}": {
+      "post": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Draft a regression case from a real run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Conversation id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedBehavior": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals/suggest": {
+      "post": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Judge proposes cases from the agent's recent runs (saved as suggested)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agent": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 5
+                  },
+                  "conversationIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "agent"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EvalCase"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals/upload": {
+      "post": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Upload approved cases to Foundry: dataset version + eval + run",
+        "description": "Writes to the Foundry project: a new version of dataset `oversight-<agent>-evals`, the eval `oversight-<agent>` (created once), and an eval run graded on each case's logged response.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agent": {
+                    "type": "string"
+                  },
+                  "caseIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "agent"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals/traces": {
+      "post": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Grade an agent's recent runs from its App Insights traces (shows under the agent in Foundry)",
+        "description": "Creates (once) the eval `oversight-traces-<agent>` with intent resolution, task adherence and tool call accuracy graders, then starts a run with data source `azure_ai_traces` for the agent's gen_ai.agent.id. Only runs whose spans record gen_ai.input/output messages are graded.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agent": {
+                    "type": "string"
+                  },
+                  "lookbackHours": {
+                    "type": "integer",
+                    "default": 168,
+                    "maximum": 720
+                  },
+                  "maxTraces": {
+                    "type": "integer",
+                    "default": 50,
+                    "maximum": 500
+                  }
+                },
+                "required": [
+                  "agent"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceRunResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/evals/foundry": {
+      "get": {
+        "tags": [
+          "Evals"
+        ],
+        "summary": "Foundry evals and their recent runs",
+        "parameters": [
+          {
+            "name": "agent",
+            "in": "query",
+            "required": false,
+            "description": "Agent name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FoundryEval"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "NameCount": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "Bucket": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "toolCalls": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "tokens": {
+            "type": "integer"
+          }
+        }
+      },
+      "Totals": {
+        "type": "object",
+        "properties": {
+          "runs": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "failedRuns": {
+            "type": "integer"
+          },
+          "conversations": {
+            "type": "integer"
+          },
+          "llmCalls": {
+            "type": "integer"
+          },
+          "toolCalls": {
+            "type": "integer"
+          },
+          "toolErrors": {
+            "type": "integer"
+          },
+          "inputTokens": {
+            "type": "integer"
+          },
+          "outputTokens": {
+            "type": "integer"
+          },
+          "activeAgents": {
+            "type": "integer"
+          }
+        }
+      },
+      "AgentStats": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "failedRuns": {
+            "type": "integer"
+          },
+          "toolCalls": {
+            "type": "integer"
+          },
+          "toolErrors": {
+            "type": "integer"
+          },
+          "llmCalls": {
+            "type": "integer"
+          },
+          "inputTokens": {
+            "type": "integer"
+          },
+          "outputTokens": {
+            "type": "integer"
+          },
+          "avgDurationMs": {
+            "type": "number"
+          },
+          "p95DurationMs": {
+            "type": "number"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "topTools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NameCount"
+            }
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Bucket"
+            }
+          }
+        }
+      },
+      "ToolStats": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "calls": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "avgMs": {
+            "type": "number"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NameCount"
+            }
+          }
+        }
+      },
+      "Task": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "started": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivity": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "incomplete"
+            ]
+          },
+          "input": {
+            "type": "string"
+          },
+          "outputPreview": {
+            "type": "string"
+          },
+          "toolSequence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "toolErrors": {
+            "type": "integer"
+          },
+          "turns": {
+            "type": "integer"
+          },
+          "tokens": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          },
+          "stopReason": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/Intent"
+          }
+        },
+        "description": "One agent run (conversation id + trace)."
+      },
+      "FeedItem": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "conversationId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "window": {
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentStats"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolStats"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "timeline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Bucket"
+            }
+          },
+          "feed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeedItem"
+            }
+          }
+        }
+      },
+      "Insight": {
+        "type": "object",
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "themes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "theme": {
+                  "type": "string"
+                },
+                "agents": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "count": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent": {
+                  "type": "string"
+                },
+                "doing": {
+                  "type": "string"
+                },
+                "health": {
+                  "type": "string",
+                  "enum": [
+                    "good",
+                    "watch",
+                    "bad"
+                  ]
+                }
+              }
+            }
+          },
+          "concerns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          }
+        }
+      },
+      "Intent": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "trajectory": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "on_track",
+              "drifting",
+              "stuck",
+              "failed",
+              "completed"
+            ]
+          },
+          "riskFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "judgedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cacheKey": {
+            "type": "string"
+          }
+        },
+        "description": "The judge's reading of one conversation."
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string",
+            "description": "gen_ai.agent.id its spans carry"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "inFoundry": {
+            "type": "boolean"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AgentStats"
+          },
+          "evalCases": {
+            "type": "integer"
+          }
+        }
+      },
+      "Step": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "parentId": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "llm",
+              "tool",
+              "subcall",
+              "http",
+              "answer",
+              "log"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "turn": {
+            "type": "integer"
+          },
+          "depth": {
+            "type": "integer"
+          },
+          "tokens": {
+            "type": "integer"
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Conversation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "started": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ended": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stopReason": {
+            "type": "string"
+          },
+          "input": {
+            "type": "string"
+          },
+          "output": {
+            "type": "string"
+          },
+          "systemPrompt": {
+            "type": "string"
+          },
+          "toolDefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "inputTokens": {
+            "type": "integer"
+          },
+          "outputTokens": {
+            "type": "integer"
+          },
+          "toolCalls": {
+            "type": "integer"
+          },
+          "toolErrors": {
+            "type": "integer"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            }
+          }
+        },
+        "description": "Run timeline rebuilt from OpenTelemetry spans."
+      },
+      "UploadRef": {
+        "type": "object",
+        "properties": {
+          "evalId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "dataset": {
+            "type": "string"
+          },
+          "datasetVersion": {
+            "type": "string"
+          },
+          "reportUrl": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EvalCase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "expectedBehavior": {
+            "type": "string"
+          },
+          "expectedTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response": {
+            "type": "string"
+          },
+          "actualTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceConversationId": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "judge",
+              "manual",
+              "conversation"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "approved",
+              "rejected",
+              "uploaded"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "upload": {
+            "$ref": "#/components/schemas/UploadRef"
+          }
+        }
+      },
+      "EvalCaseInput": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "expectedBehavior": {
+            "type": "string"
+          },
+          "expectedTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "approved",
+              "rejected",
+              "uploaded"
+            ]
+          },
+          "category": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "query"
+        ]
+      },
+      "PublishResult": {
+        "type": "object",
+        "properties": {
+          "evalId": {
+            "type": "string"
+          },
+          "evalName": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "runStatus": {
+            "type": "string"
+          },
+          "reportUrl": {
+            "type": "string"
+          },
+          "dataset": {
+            "type": "string"
+          },
+          "datasetVersion": {
+            "type": "string"
+          },
+          "cases": {
+            "type": "integer"
+          }
+        }
+      },
+      "FoundryEval": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "eval_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "integer"
+                },
+                "report_url": {
+                  "type": "string"
+                },
+                "result_counts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "TraceRunResult": {
+        "type": "object",
+        "properties": {
+          "evalId": {
+            "type": "string"
+          },
+          "evalName": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "runStatus": {
+            "type": "string"
+          },
+          "reportUrl": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "lookbackHours": {
+            "type": "integer"
+          },
+          "maxTraces": {
+            "type": "integer"
+          }
+        }
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "autoJudge": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "autoJudge"
+        ]
+      },
+      "Alert": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "riskFlags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "JudgeInfo": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "graderModel": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "foundryAgent": {
+            "type": "boolean"
+          },
+          "traced": {
+            "type": "boolean"
+          },
+          "autoJudge": {
+            "type": "boolean"
+          },
+          "cachedIntents": {
+            "type": "integer"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "integer"
+              },
+              "inputTokens": {
+                "type": "integer"
+              },
+              "outputTokens": {
+                "type": "integer"
+              },
+              "byKind": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "lastCall": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              },
+              "since": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "project": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          },
+          "judgeDeployment": {
+            "type": "string"
+          },
+          "evalDeployment": {
+            "type": "string"
+          },
+          "openaiEndpoint": {
+            "type": "string"
+          },
+          "subscribers": {
+            "type": "integer"
+          },
+          "azure": {
+            "type": "object"
+          },
+          "foundry": {
+            "type": "object"
+          },
+          "live": {
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "boolean"
+              },
+              "spans": {
+                "type": "integer"
+              },
+              "lastPoll": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "error": {
+                "type": "string"
+              },
+              "interval": {
+                "type": "string"
+              },
+              "lookback": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}
